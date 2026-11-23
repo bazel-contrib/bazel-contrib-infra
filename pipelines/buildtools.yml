@@ -1,0 +1,10 @@
+# Requires Mike Farah yq v4 on the setup agent and Bazelisk on test agents.
+# Non-default queues must exist; Windows agents must use Bash as their command shell.
+steps:
+  - label: ":pipeline: Generate presubmit jobs"
+    key: setup
+    command: |
+      set -euo pipefail
+      yq '
+        ${presubmit_expression}
+      ' .bazelci/presubmit.yml | buildkite-agent pipeline upload --no-interpolation

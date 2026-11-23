@@ -1,65 +1,109 @@
 # bazel-contrib Buildkite
 
-Minimal OpenTofu configuration for https://buildkite.com/bazel-contrib.
+OpenTofu configuration for [bazel-contrib on Buildkite](https://buildkite.com/bazel-contrib).
 
-- `main.tf`: organization two-factor requirement; existing IP policies stay unmanaged.
-- `pipelines.tf`: existing `rules-lint` pipeline and GitHub trigger settings.
-- `pipelines/rules-lint.yml`: exact bootstrap YAML captured from Buildkite.
-- `imports.tf`: adopt the existing organization and pipeline instead of creating duplicates.
+## Configuration
 
-The pipeline stays public, limits branches to `main`, and keeps pull requests from
-forks enabled. Its bootstrap runs `.buildkite/pipeline.py` from the `rules_lint`
-repository, which generates the remaining build steps. Existing cluster, team
-access, webhooks, and agent infrastructure stay outside this configuration.
+- `main.tf`: organization settings; IP policies are unmanaged.
+- `pipelines.tf`: shared defaults, repository settings, team lookup, and webhooks.
+- `pipelines/*.yml`: bootstrap templates, named after each pipeline slug.
+- `pipelines/bazelci.yq`: buildtools presubmit-to-Buildkite transform.
+- `imports.tf`: declarative imports identifying the organization and `rules-lint` pipeline.
+
+Repository entries override shared defaults; nested `provider_settings` merge
+individually. Each pipeline specifies its own color and emoji. Comments explain
+less obvious settings using the provider documentation linked below.
+
+`rules-lint` runs `.buildkite/pipeline.py` from its repository. Its team access and
+repository webhook are managed outside this configuration. `buildtools` uses the
+`everyone` team for initial access and a GitHub App webhook managed by OpenTofu.
+The Buildkite GitHub App must have access to `bazel-contrib/buildtools`.
+
+To add a pipeline, add a repository entry to `local.pipelines` and a matching
+`pipelines/<slug>.yml` bootstrap template. Set `default_team_id` for creation and
+`create_webhook = true` to manage its GitHub App webhook. The initial team gets
+Manage Build and Read access; further team associations require separate management.
+
+## Buildtools presubmit
+
+Terraform embeds `pipelines/bazelci.yq` into the bootstrap with `templatefile()`.
+At build time, Mike Farah yq v4 reads the checked-out `.bazelci/presubmit.yml` and
+generates buildifier plus one test step per platform. The transform preserves
+test flags and target exclusions, normalizes the target separator, and
+shell-quotes each argument. Pipeline upload disables variable interpolation so
+generated shell arguments stay literal.
+
+The supported input fields are `buildifier.version`, `buildifier.warnings`, and
+`platforms.<platform>.test_flags` / `test_targets`. BazelCI matrices, imports,
+setup commands, and sharding are unsupported. The transform uses the upstream
+buildifier image and BazelCI test-only/flaky-test flags. It runs Bazel directly
+because the BazelCI runner assumes organization-specific Google cloud projects,
+credentials, and caches.
+
+The expression defines these queue mappings:
+
+| Presubmit platform | Buildkite queue |
+| --- | --- |
+| `ubuntu2204` | `default` |
+| `macos` | `macos` |
+| `macos_arm64` | `macos_arm64` |
+| `windows` | `windows` |
+
+Provision queues with the corresponding OS and architecture before running the
+pipeline. Update the mapping when adding platforms or changing queue names.
+Test agents need Bazelisk and repository build tools. Windows agents need Bash
+as their command shell for POSIX quoting. The setup agent needs Mike Farah yq v4
+with `@sh` support; the buildifier step needs Docker.
 
 ## Use
 
-Install OpenTofu 1.11 or newer. The official `buildkite/buildkite` provider needs
-an organization administrator's API token authorized for `bazel-contrib` with:
+Install OpenTofu >= 1.11 and < 2.0. The `buildkite/buildkite` provider needs an
+organization administrator API token authorized for `bazel-contrib` with:
 
 - `graphql`
 - `read_pipelines` and `write_pipelines`
 - `read_organization_settings` and `write_organization_settings`
 
+Set `BUILDKITE_API_TOKEN` through your credential manager or shell environment,
+then run:
+
 ```sh
-export BUILDKITE_API_TOKEN="$(cat /tmp/buildkite-token)"
 tofu init
 tofu plan -out=buildkite.tfplan
-# Review the plan. Initial adoption should import two resources with no changes.
+# Review the saved plan before applying.
 tofu apply buildkite.tfplan
-unset BUILDKITE_API_TOKEN
 ```
 
-No remote changes have been applied. The import blocks can remain after adoption.
-The supplied token currently lacks the two organization-settings scopes above;
-API/browser policy reads produce warnings until those are added. The two-factor
-requirement was read through GraphQL and matches current settings.
-Review the first plan carefully: provider defaults or settings unavailable through
-the REST API may need matching before applying. The two-factor requirement
-matches the captured current value (`false`). New pipelines need an initial
-`default_team_id` and repository webhook setup in addition to a pipeline resource.
+Declarative import blocks associate resources with their Buildkite identities
+and can remain after import. Check the plan for unintended changes to provider
+settings, team assignments, and webhooks before applying.
 
 Commit `.terraform.lock.hcl`. State uses the local backend; keep it private and
 backed up. Configure shared state with locking before multiple people or CI apply
 changes. State, saved plans, local variable values, and credentials are ignored.
-The resource lifecycle blocks protect against deletion while their resource
-blocks remain in configuration.
+Resource lifecycle blocks prevent deletion while their resource blocks remain
+in configuration.
+
+## Validation
+
+```sh
+tofu init
+tofu fmt -check -recursive
+tofu validate
+```
+
+To inspect generated jobs against a buildtools checkout:
+
+```sh
+yq --from-file pipelines/bazelci.yq /path/to/buildtools/.bazelci/presubmit.yml
+```
+
+Review the output for platform queues, test flags, target exclusions, and the
+buildifier configuration. Validate queue availability and agent prerequisites
+in Buildkite before running builds.
 
 ## Provider reference
 
 - [Authentication](https://github.com/buildkite/terraform-provider-buildkite/blob/v1.48.0/docs/index.md)
 - [Organization settings](https://github.com/buildkite/terraform-provider-buildkite/blob/v1.48.0/docs/resources/organization.md)
 - [Pipelines](https://github.com/buildkite/terraform-provider-buildkite/blob/v1.48.0/docs/resources/pipeline.md)
-
-## Local verification
-
-On the setup computer, `github.com` connections time out, including provider
-checksum downloads during `tofu init`. Verification uses a temporary filesystem
-mirror populated through GitHub's official release-assets API, with archive
-SHA256 checks against the official checksum file. The mirror stays outside this
-repository; normal use keeps the standard OpenTofu registry source. The lock file
-includes checksums for macOS ARM64 and Linux AMD64.
-
-Verified with OpenTofu 1.13.9: format check and schema validation pass. The import
-plan reports **2 to import, 0 to add, 0 to change, 0 to destroy**, with warnings
-for the token's missing organization-settings read scope. No apply was run.
