@@ -1,0 +1,4 @@
+steps:
+  - label: ":pipeline: Setup"
+    key: setup
+    command: .buildkite/pipeline.py | buildkite-agent pipeline upload
