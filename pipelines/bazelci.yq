@@ -1,0 +1,35 @@
+# Derived from buildtools presubmit config and the BazelCI functions named below:
+# https://github.com/bazel-contrib/buildtools/blob/main/.bazelci/presubmit.yml
+# https://github.com/bazelbuild/continuous-integration/blob/master/buildkite/bazelci.py
+# Covers the current buildtools config, not BazelCI matrices, imports, setup, or sharding.
+# Run Bazel directly to avoid BazelCI organization-specific cloud projects and caches.
+. as $config |
+# Local queue choices replace BazelCI PLATFORMS; these names must match provisioned queues.
+{"ubuntu2204": "default", "macos": "macos", "macos_arm64": "macos_arm64", "windows": "windows"} as $queues |
+{"steps": (
+  # create_buildifier_step() passes version and warnings to this image via environment.
+  # create_docker_step() uses docker#v3.8.0; the image entrypoint supplies the command.
+  [{"label": ":buildkite: Buildifier", "plugins": [{"docker#v3.8.0": {
+    "image": "gcr.io/bazel-public/buildifier",
+    "environment": [
+      "BUILDIFIER_VERSION=" + $config.buildifier.version,
+      "BUILDIFIER_WARNINGS=" + $config.buildifier.warnings
+    ]
+  }}]}] +
+  # load_config() treats legacy platforms entries as tasks; print_project_pipeline()
+  # emits one runner step per task. Here each platform becomes a direct test step.
+  [($config.platforms | to_entries[]) |
+    {"label": ":bazel: " + .key,
+     "key": .key,
+     "agents": {"queue": $queues[.key]},
+     # execute_bazel_test() adds these flags to configured test_flags and targets.
+     "command": "bazel test --build_tests_only --flaky_test_attempts=3 " +
+       # @sh preserves each argument literally; test agents must use a POSIX shell.
+       ((.value.test_flags // [] | map(@sh) | join(" ")) + " -- " +
+        # Windows targets already contain --; emit one separator before all targets
+        # so negative target patterns remain exclusions rather than command flags.
+        ([.value.test_targets[] | select(. != "--")] | map(@sh) | join(" "))),
+     # Collect test logs directly instead of BazelCI BEP-driven artifact processing.
+     "artifact_paths": ["bazel-testlogs/**/test.log"]}
+  ]
+)}
