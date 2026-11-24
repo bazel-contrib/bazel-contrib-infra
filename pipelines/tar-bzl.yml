@@ -1,32 +1,6 @@
-# Mirrors the Linux test coverage in tar.bzl/.aspect/workflows/config.yaml.
-# The default queue needs Linux agents with Bazelisk and repository build tools.
-agents:
-  queue: default
-
 steps:
-  - label: ":bazel: {{matrix.workspace}} / Bazel {{matrix.bazel}}"
-    key: bzlmod
-    env:
-      USE_BAZEL_VERSION: "{{matrix.bazel}}"
+  - label: ":pipeline: Set up test jobs"
+    key: setup
     command: |
-      cd "{{matrix.workspace}}"
-      bazel test --config=ci //...
-    matrix:
-      setup:
-        workspace: [".", "e2e/smoke", "examples"]
-        bazel: ["7.x", "8.x", "9.x"]
-      adjustments:
-        # The repository disables Bazel 9 for examples.
-        - with:
-            workspace: examples
-            bazel: "9.x"
-          skip: true
-
-  # Only the smoke workspace retains a legacy WORKSPACE test.
-  - label: ":bazel: e2e/smoke / WORKSPACE (Bazel 7)"
-    key: workspace
-    env:
-      USE_BAZEL_VERSION: "7.x"
-    command: |
-      cd e2e/smoke
-      bazel test --config=ci --noenable_bzlmod //...
+      set -euo pipefail
+      .buildkite/pipeline.py | buildkite-agent pipeline upload
