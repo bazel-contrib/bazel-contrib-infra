@@ -5,6 +5,6 @@ import {
 }
 
 import {
-  to = buildkite_pipeline.rules_lint
+  to = buildkite_pipeline.pipelines["rules-lint"]
   id = "UGlwZWxpbmUtLS0wMWExYzc0MS1kYmExLTQwNDUtODk2OS1lMzJkNmIyMzM4NWE="
 }
