@@ -13,34 +13,11 @@ Repository entries override shared defaults; nested `provider_settings` merge
 individually. Each pipeline specifies its own color and emoji. Comments explain
 less obvious settings using the provider documentation linked below.
 
-`rules-lint` runs `.buildkite/pipeline.py` from its repository. Its team access and
-repository webhook are managed outside this configuration. `tar-bzl` uses the
-`everyone` team for initial access and a GitHub App webhook managed by OpenTofu.
-The Buildkite GitHub App must have access to `bazel-contrib/tar.bzl`.
-
 To add a pipeline, add a repository entry to `local.pipelines` and a matching
 `pipelines/<slug>.yml` pipeline YAML file. Set `default_team_id` for creation and
 `create_webhook = true` to manage its GitHub App webhook. The initial team gets
 Manage Build and Read access; further team associations require separate management.
-
-## tar.bzl tests
-
-`pipelines/tar-bzl.yml` defines Linux test jobs based on the repository
-[Workflows configuration](https://github.com/bazel-contrib/tar.bzl/blob/main/.aspect/workflows/config.yaml).
-Buildkite expands the YAML matrix directly:
-
-- Root and `e2e/smoke`: Bazel 7.x, 8.x, and 9.x with Bzlmod.
-- `examples`: Bazel 7.x and 8.x with Bzlmod.
-- `e2e/smoke`: Bazel 7.x with `--noenable_bzlmod` for WORKSPACE coverage.
-
-Each job runs `bazel test --config=ci //...` in its workspace. Bazel 9 examples
-and WORKSPACE tests outside `e2e/smoke` are excluded, matching the repository
-configuration. macOS and pre-commit checks run through the repository GitHub
-Actions workflows.
-
-The `default` queue must provide Linux agents with Bazelisk and the repository
-build tools. The `USE_BAZEL_VERSION` environment variable selects each job version.
-Update the matrix alongside changes to supported workspaces and Bazel versions.
+The Buildkite GitHub App must have access to repositories with managed webhooks.
 
 ## Use
 
@@ -79,9 +56,8 @@ tofu fmt -check -recursive
 tofu validate
 ```
 
-Review `pipelines/tar-bzl.yml` against the tar.bzl Workflows configuration when
-updating the test matrix. Validate queue availability and agent prerequisites
-in Buildkite before running builds.
+Validate queue availability and agent prerequisites for each pipeline in
+Buildkite before running builds.
 
 ## Provider reference
 
