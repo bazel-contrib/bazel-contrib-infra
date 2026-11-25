@@ -114,6 +114,17 @@ locals {
       description = "Run static analysis tools with Bazel"
       repository  = "https://github.com/bazel-contrib/rules_lint.git"
     }
+    rules-python = {
+      color       = "#3776AB"
+      emoji       = ":python:"
+      name        = "rules_python"
+      description = "Build and test Bazel Python rules"
+      repository  = "https://github.com/bazel-contrib/rules_python.git"
+      # Initial team gets Manage Build and Read access; null leaves imported access unchanged.
+      default_team_id = data.buildkite_team.everyone.id
+      # Create a GitHub App webhook for this repository through Buildkite.
+      create_webhook = true
+    }
     tar-bzl = {
       color       = "#D1C4E9"
       emoji       = ":package:"
